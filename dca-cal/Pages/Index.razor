@@ -1,0 +1,121 @@
+﻿@page "/"
+@inject dca_cal.Services.InvestmentService investmentService
+@using dca_cal.Data;
+
+<PageTitle>DCA Calc</PageTitle>
+
+<MudGrid Style="padding-left: 10px; padding-right: 10px">
+    <MudItem xs="3">
+        <MudNumericField @bind-Value="@amount" Label="Amount" Variant="Variant.Text" Class="mud-width-full py-8" />
+    </MudItem>
+    <MudItem xs="3">
+        <MudDatePicker Label="Date start" @bind-Date="@dateStart" Class="mud-width-full py-8" />
+    </MudItem>
+    <MudItem xs="3">
+        <div class="d-flex">
+            <MudSelect T="string" Label="Frequency" @bind-Value="frequency" Class="mud-width-full py-8" Style="margin: 5px">
+                @foreach (var freq in frequencies)
+                {
+                    <MudSelectItem T="string" Value="@freq">@freq</MudSelectItem>
+                }
+            </MudSelect>
+
+            <MudSelect T="CryptoType" Label="Crypto" MultiSelection="true" @bind-Value="selectedType" @bind-SelectedValues="selectedTypes" Class="mud-width-full py-8" Style="margin: 5px">
+                @foreach (var crypto in GetCryptos())
+                {
+                    <MudSelectItem T="CryptoType" Value="@crypto.Type">@crypto.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </div>
+    </MudItem>
+    <MudItem xs="3" style="margin-top: auto; margin-bottom: auto; justify-content: space-around;">
+        <div class="d-flex">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" @onclick="apply" Class="mud-width-full px-8" Style="margin: 5px">Apply</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Secondary" @onclick="reset" Class="mud-width-full px-8" Style="margin: 5px">Reset</MudButton>
+        </div>
+    </MudItem>
+
+    <MudItem xs="12">
+        @if (isLoading)
+        {
+            <MudProgressLinear Indeterminate="true" />
+        }
+        else
+        {
+            <MudDataGrid Items="@Elements" SortMode="SortMode.Single">
+                <Columns>
+                    <PropertyColumn Property="x => x.Date" Title="Date" />
+                    <PropertyColumn Property="x => x.InvestedAmount" Title="Invested Amount" />
+                    <PropertyColumn Property="x => x.CryptoType" Title="Crypto" />
+                    <PropertyColumn Property="x => x.CryptoAmount" Title="Crypto Amount" />
+                    <PropertyColumn Property="x => x.ValueToday" Title="Value Today" />
+                    <PropertyColumn Property="x => x.ROI" />
+                </Columns>
+            </MudDataGrid>
+        }
+    </MudItem>
+</MudGrid>
+
+@code {
+    private bool isLoading = false;
+    private decimal amount = 1;
+    private DateTime? dateStart = new DateTime(DateTime.Today.Year, 1, 1);
+
+    private string frequency { get; set; } = "Monthly";
+    private List<string> frequencies { get; set; } = new List<string>() { "15th", "20th", "25th", "Monthly" };
+
+    private CryptoType selectedType { get; set; } = CryptoType.BTC;
+    private IEnumerable<CryptoType> selectedTypes { get; set; } = new HashSet<CryptoType>() { CryptoType.BTC };
+
+    public List<Investment> Elements = new List<Investment>();
+
+    public class CryptoValue
+    {
+        public CryptoType Type { get; set; }
+        public string Name { get; set; }
+    }
+
+    public List<CryptoValue> GetCryptos()
+    {
+        List<CryptoValue> values = new List<CryptoValue>();
+        List<CryptoType> typeList = Enum.GetValues(typeof(CryptoType)).Cast<CryptoType>().ToList();
+        foreach (var t in typeList)
+        {
+            values.Add(new CryptoValue()
+            {
+                Type = t,
+                Name = t.ToString()
+            });
+        }
+
+        return values;
+    }
+
+    public async Task apply()
+    {
+        isLoading = true;
+        var inv = new List<dca_cal.Data.Investment>();
+
+        Elements.Clear();
+        foreach (var type in selectedTypes)
+        {
+            var data = await investmentService.CalculateDCA(type, dateStart.Value, amount, frequency);
+            if (data != null && data.Count() > 0)
+            {
+                Elements.AddRange(data);
+            }
+        }
+
+        Elements = Elements.OrderBy(s => s.Date).ToList();
+        isLoading = false;
+    }
+
+    public void reset()
+    {
+        isLoading = false;
+        Elements = new List<Investment>();
+        dateStart = new DateTime(DateTime.Today.Year, 1, 1);
+        selectedTypes = new HashSet<CryptoType>() { CryptoType.BTC };
+        frequency = "Monthly";
+    }
+}
